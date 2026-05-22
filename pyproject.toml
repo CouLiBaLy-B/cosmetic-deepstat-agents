@@ -1,0 +1,102 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cosmetic-deepstat-agents"
+version = "0.1.0"
+description = "Agentic platform (DeepAgents) for cosmetic clinical study design, analysis, claim substantiation and post-market monitoring."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "CouLiBaLy-B" }]
+
+dependencies = [
+  # --- Agentic stack (pinned to current Nov-2025/2026 generation) ---
+  "deepagents>=0.6.3,<0.7",
+  "langchain>=1.3.0,<2",
+  "langgraph>=1.2.0,<2",
+  "langchain-core>=1.0,<2",
+  # Provider adapters are optional extras (installed only when used)
+
+  # --- API layer ---
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "python-multipart>=0.0.12",
+
+  # --- Storage / persistence ---
+  "sqlalchemy>=2.0",
+  "alembic>=1.13",
+
+  # --- Statistics (MVP) ---
+  "numpy>=1.26",
+  "pandas>=2.2",
+  "scipy>=1.13",
+  "statsmodels>=0.14",
+  "pingouin>=0.5.5",
+  "scikit-learn>=1.5",
+  "pyarrow>=17",          # parquet
+  "openpyxl>=3.1",        # xlsx
+  "matplotlib>=3.9",
+  "seaborn>=0.13",
+
+  # --- Reports ---
+  "jinja2>=3.1",
+
+  # --- Utilities ---
+  "python-dotenv>=1.0",
+  "structlog>=24.4",
+  "orjson>=3.10",
+  "rich>=13.9",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+anthropic = ["langchain-anthropic>=1.0"]
+openai    = ["langchain-openai>=1.0"]
+google    = ["langchain-google-genai>=2.0"]
+postgres  = ["psycopg[binary]>=3.2"]
+r-stats   = ["pymer4>=0.8"]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=5.0",
+  "ruff>=0.7",
+  "mypy>=1.13",
+  "types-requests",
+  "httpx>=0.27",
+]
+
+[project.scripts]
+cosmetic-deepstat = "app.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# ---------------- Tooling ----------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["workspace", "notebooks", "migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
+ignore = ["E501"]  # handled by formatter
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+ignore_missing_imports = true
+packages = ["app"]
