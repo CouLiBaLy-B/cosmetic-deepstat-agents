@@ -14,4 +14,4 @@ The 10 phases agreed with the requester. Each phase ends with a green
 | 7    | Human-in-the-loop + audit trail       | `interrupt_on` config, `ApprovalRequest` table, `audit_trail.jsonl` writer                                                | ✅ |
 | 8    | Demo study                            | `examples/sample_study/{study_metadata.json, claims.json, data/*.csv}` + generation script                                | ✅ |
 | 9    | Tests                                 | 10 tests listed in the brief, plus contract tests on every tool's JSON output                                             | ✅ |
-| 10   | Documentation + roadmap               | `docs/statistical_methods.md`, `docs/agent_design.md`, `docs/validation_plan.md`, README quick-start refreshed            | 🔜 |
+| 10   | Documentation + roadmap               | `docs/statistical_methods.md`, `docs/agent_design.md`, `docs/validation_plan.md`, README quick-start refreshed            | ✅ |
