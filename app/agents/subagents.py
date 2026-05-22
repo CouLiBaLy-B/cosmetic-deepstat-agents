@@ -4,14 +4,7 @@ Each subagent is a dict matching deepagents 0.6.x's SubAgent schema:
 ``{"name", "description", "system_prompt", "tools", "model?", "middleware?",
 "interrupt_on?"}``.
 
-For the MVP we wire **the 3 priority sub-agents** with their real tools:
-- regulatory_claim_mapper
-- data_quality_subagent
-- statistical_analysis_subagent
-
-The 7 remaining sub-agents are scaffolded (prompt + name + description) and
-exposed by ``build_all_subagents`` so they can be enabled at any time by
-adding tools to them.
+Phase 4-5: all 10 sub-agents are now fully wired with their tool subsets.
 """
 
 from __future__ import annotations
@@ -92,6 +85,10 @@ def build_subagents(
                 "load_dataset_tool",
                 "choose_statistical_test_tool",
                 "run_paired_test_tool",
+                "run_mmrm_tool",
+                "run_glmm_logit_tool",
+                "run_mcnemar_tool",
+                "run_tost_tool",
                 "hash_file_tool",
                 "record_package_versions_tool",
                 "write_audit_event_tool",
@@ -99,7 +96,6 @@ def build_subagents(
         ),
     }
 
-    # ------- Scaffolded sub-agents (no tools yet, will be enabled in later phases) ------
     study_design = {
         **base,
         "name": "study_design_subagent",
@@ -122,7 +118,15 @@ def build_subagents(
             "not supported. Proposes ALLOWED and FORBIDDEN wording."
         ),
         "system_prompt": prompts.MULTIPLICITY_CLAIM_PROMPT,
-        "tools": _by_name(tools, ["apply_multiplicity_tool", "request_human_approval_tool"]),
+        "tools": _by_name(
+            tools,
+            [
+                "apply_multiplicity_tool",
+                "request_human_approval_tool",
+                "hash_file_tool",
+                "write_audit_event_tool",
+            ],
+        ),
     }
 
     safety = {
@@ -133,7 +137,16 @@ def build_subagents(
             "APPROVAL before any safety claim wording."
         ),
         "system_prompt": prompts.SAFETY_TOLERABILITY_PROMPT,
-        "tools": _by_name(tools, ["request_human_approval_tool"]),
+        "tools": _by_name(
+            tools,
+            [
+                "load_dataset_tool",
+                "run_paired_test_tool",
+                "run_mcnemar_tool",
+                "request_human_approval_tool",
+                "write_audit_event_tool",
+            ],
+        ),
     }
 
     consumer = {
@@ -145,7 +158,14 @@ def build_subagents(
             "instrumental evidence."
         ),
         "system_prompt": prompts.CONSUMER_INSIGHT_PROMPT,
-        "tools": _by_name(tools, ["write_audit_event_tool"]),
+        "tools": _by_name(
+            tools,
+            [
+                "load_dataset_tool",
+                "run_top2box_tool",
+                "write_audit_event_tool",
+            ],
+        ),
     }
 
     postmarket = {
@@ -156,7 +176,14 @@ def build_subagents(
             "per-lot/country/channel breakdown, rule-based signal alerts."
         ),
         "system_prompt": prompts.POSTMARKET_MONITORING_PROMPT,
-        "tools": _by_name(tools, ["request_human_approval_tool"]),
+        "tools": _by_name(
+            tools,
+            [
+                "load_dataset_tool",
+                "request_human_approval_tool",
+                "write_audit_event_tool",
+            ],
+        ),
     }
 
     report = {
@@ -169,7 +196,14 @@ def build_subagents(
             "HUMAN APPROVAL."
         ),
         "system_prompt": prompts.REPORT_WRITER_PROMPT,
-        "tools": _by_name(tools, ["hash_file_tool", "request_human_approval_tool"]),
+        "tools": _by_name(
+            tools,
+            [
+                "hash_file_tool",
+                "request_human_approval_tool",
+                "write_audit_event_tool",
+            ],
+        ),
     }
 
     qa = {

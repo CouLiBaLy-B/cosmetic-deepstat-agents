@@ -816,6 +816,294 @@ def _impl_check_approval_status(approval_id: str) -> dict[str, Any]:
 
 
 # ===========================================================================
+
+
+# ===========================================================================
+# 15. run_mmrm_tool
+# ===========================================================================
+def _impl_run_mmrm(
+    study_id: str,
+    rel_path: str,
+    endpoint: str,
+    subject_col: str = "subject_id",
+    time_col: str = "visit",
+    value_col: str = "value",
+    baseline: str = "D0",
+    primary_timepoint: str = "D28",
+    practical_threshold: float | None = None,
+    direction: Literal["increase", "decrease", "two_sided"] = "two_sided",
+) -> dict[str, Any]:
+    """Run MMRM and persist the result."""
+    from app.services.statistics_runner import run_mmrm
+
+    src = _resolve(study_id, rel_path)
+    df = _read_dataset(src)
+    ws = StudyWorkspace(study_id).ensure()
+
+    res = run_mmrm(
+        df, endpoint, subject_col, time_col, value_col, baseline, primary_timepoint,
+    )
+
+    # Practical threshold
+    prac_met: bool | None = None
+    if practical_threshold is not None:
+        if direction == "increase":
+            prac_met = res["estimate"] >= practical_threshold
+        elif direction == "decrease":
+            prac_met = res["estimate"] <= practical_threshold
+        else:
+            prac_met = abs(res["estimate"]) >= abs(practical_threshold)
+
+    out: dict[str, Any] = {
+        **res,
+        "practical_threshold": practical_threshold,
+        "practical_threshold_met": prac_met,
+        "conclusion": _short_conclusion(res["estimate"], res["p_value"], prac_met, direction),
+        "artefacts": {},
+    }
+
+    # Write reproducible script
+    script = (
+        f"# Reproducible MMRM script for {endpoint}\n"
+        f"import pandas as pd\n"
+        f"from app.services.statistics_runner import run_mmrm\n\n"
+        f"df = pd.read_parquet('{src}')\n"
+        f"result = run_mmrm(\n"
+        f"    df, endpoint={endpoint!r},\n"
+        f"    subject_col={subject_col!r}, time_col={time_col!r},\n"
+        f"    value_col={value_col!r}, baseline={baseline!r},\n"
+        f"    primary_timepoint={primary_timepoint!r},\n"
+        f")\n"
+        f"print(result)\n"
+    )
+    script_path = ws.scripts / f"mmrm_{endpoint}.py"
+    script_path.write_text(script)
+    out["artefacts"]["script"] = str(script_path.relative_to(ws.root))
+
+    # Write result JSON
+    res_path = ws.results / f"mmrm_{endpoint}.json"
+    res_hash = _write_json(res_path, out)
+    out["artefacts"]["result_json"] = str(res_path.relative_to(ws.root))
+    out["artefacts"]["result_sha256"] = res_hash
+
+    write_audit_event(
+        actor="tool:run_mmrm",
+        action="stats.mmrm",
+        study_id=study_id,
+        output_hash=res_hash,
+        metadata={"endpoint": endpoint, "n": res["n"], "model": res["model"]},
+    )
+    return out
+
+
+# ===========================================================================
+# 16. run_glmm_logit_tool
+# ===========================================================================
+def _impl_run_glmm_logit(
+    study_id: str,
+    rel_path: str,
+    endpoint: str,
+    subject_col: str = "subject_id",
+    time_col: str = "visit",
+    value_col: str = "value",
+    baseline: str = "D0",
+    primary_timepoint: str = "D28",
+) -> dict[str, Any]:
+    """Run logistic GLMM (GEE) for a binary endpoint and persist."""
+    from app.services.statistics_runner import run_glmm_logit
+
+    src = _resolve(study_id, rel_path)
+    df = _read_dataset(src)
+    ws = StudyWorkspace(study_id).ensure()
+
+    res = run_glmm_logit(
+        df, endpoint, subject_col, time_col, value_col, baseline, primary_timepoint,
+    )
+
+    script_path = ws.scripts / f"glmm_logit_{endpoint}.py"
+    script_path.write_text(
+        f"# Reproducible GLMM-logit script for {endpoint}\n"
+        f"import pandas as pd\n"
+        f"from app.services.statistics_runner import run_glmm_logit\n\n"
+        f"df = pd.read_parquet('{src}')\n"
+        f"result = run_glmm_logit(df, endpoint={endpoint!r})\n"
+        f"print(result)\n"
+    )
+    res["artefacts"] = {"script": str(script_path.relative_to(ws.root))}
+
+    res_path = ws.results / f"glmm_logit_{endpoint}.json"
+    res_hash = _write_json(res_path, res)
+    res["artefacts"]["result_json"] = str(res_path.relative_to(ws.root))
+    res["artefacts"]["result_sha256"] = res_hash
+
+    write_audit_event(
+        actor="tool:run_glmm_logit",
+        action="stats.glmm_logit",
+        study_id=study_id,
+        output_hash=res_hash,
+        metadata={"endpoint": endpoint, "n": res["n"]},
+    )
+    return res
+
+
+# ===========================================================================
+# 17. run_mcnemar_tool
+# ===========================================================================
+def _impl_run_mcnemar(
+    study_id: str,
+    rel_path: str,
+    endpoint: str,
+    subject_col: str = "subject_id",
+    time_col: str = "visit",
+    value_col: str = "value",
+    baseline: str = "D0",
+    timepoint: str = "D28",
+) -> dict[str, Any]:
+    """Run McNemar's test for a paired binary endpoint and persist."""
+    from app.services.statistics_runner import run_mcnemar
+
+    src = _resolve(study_id, rel_path)
+    df = _read_dataset(src)
+    ws = StudyWorkspace(study_id).ensure()
+
+    res = run_mcnemar(df, endpoint, subject_col, time_col, value_col, baseline, timepoint)
+
+    script_path = ws.scripts / f"mcnemar_{endpoint}.py"
+    script_path.write_text(
+        f"# Reproducible McNemar script for {endpoint}\n"
+        f"import pandas as pd\n"
+        f"from app.services.statistics_runner import run_mcnemar\n\n"
+        f"df = pd.read_parquet('{src}')\n"
+        f"result = run_mcnemar(df, endpoint={endpoint!r})\n"
+        f"print(result)\n"
+    )
+    res["artefacts"] = {"script": str(script_path.relative_to(ws.root))}
+
+    res_path = ws.results / f"mcnemar_{endpoint}.json"
+    res_hash = _write_json(res_path, res)
+    res["artefacts"]["result_json"] = str(res_path.relative_to(ws.root))
+    res["artefacts"]["result_sha256"] = res_hash
+
+    write_audit_event(
+        actor="tool:run_mcnemar",
+        action="stats.mcnemar",
+        study_id=study_id,
+        output_hash=res_hash,
+        metadata={"endpoint": endpoint, "n": res["n"]},
+    )
+    return res
+
+
+# ===========================================================================
+# 18. run_top2box_tool
+# ===========================================================================
+def _impl_run_top2box(
+    study_id: str,
+    rel_path: str,
+    question_col: str,
+    value_col: str = "value",
+    scale_max: int = 5,
+) -> dict[str, Any]:
+    """Compute top-2-box percentage with Wilson CI for a consumer question."""
+    from app.services.statistics_runner import run_top2box
+
+    src = _resolve(study_id, rel_path)
+    df = _read_dataset(src)
+    ws = StudyWorkspace(study_id).ensure()
+
+    # Filter to the specific question:
+    # If the dataset has a 'question' column, filter by question_col value.
+    # Otherwise, question_col must be a column name directly.
+    if "question" in df.columns:
+        sub = df[df["question"] == question_col]
+        if sub.empty:
+            raise KeyError(f"No rows matching question={question_col!r} in dataset.")
+    elif question_col in df.columns:
+        sub = df
+        value_col = question_col  # The column itself contains the values
+    else:
+        raise KeyError(f"Column {question_col!r} not in dataset and no 'question' column found.")
+
+    responses = sub[value_col].dropna().astype(int).tolist()
+    res = run_top2box(responses, scale_max=scale_max)
+    res["question"] = question_col
+
+    res_path = ws.results / f"top2box_{question_col}.json"
+    res_hash = _write_json(res_path, res)
+    res["artefacts"] = {
+        "result_json": str(res_path.relative_to(ws.root)),
+        "result_sha256": res_hash,
+    }
+
+    write_audit_event(
+        actor="tool:run_top2box",
+        action="stats.top2box",
+        study_id=study_id,
+        output_hash=res_hash,
+        metadata={"question": question_col, "n": res["n"]},
+    )
+    return res
+
+
+# ===========================================================================
+# 19. run_tost_tool
+# ===========================================================================
+def _impl_run_tost(
+    study_id: str,
+    rel_path: str,
+    endpoint: str,
+    margin: float,
+    subject_col: str = "subject_id",
+    time_col: str = "visit",
+    value_col: str = "value",
+    baseline: str = "D0",
+    timepoint: str = "D28",
+) -> dict[str, Any]:
+    """Run TOST equivalence test on a paired endpoint."""
+    from app.services.statistics_runner import run_tost
+
+    src = _resolve(study_id, rel_path)
+    df = _read_dataset(src)
+    ws = StudyWorkspace(study_id).ensure()
+
+    sub = df[df["endpoint"] == endpoint].copy() if "endpoint" in df.columns else df.copy()
+    pre = sub[sub[time_col] == baseline].set_index(subject_col)[value_col].dropna()
+    post = sub[sub[time_col] == timepoint].set_index(subject_col)[value_col].dropna()
+    common = pre.index.intersection(post.index)
+    if len(common) < 5:
+        raise ValueError(f"TOST: too few pairs for {endpoint!r} (n={len(common)}).")
+
+    res = run_tost(post.loc[common].values, pre.loc[common].values, margin=margin, paired=True)
+    res["endpoint"] = endpoint
+    res["contrast"] = f"{timepoint} − {baseline}"
+
+    script_path = ws.scripts / f"tost_{endpoint}.py"
+    script_path.write_text(
+        f"# Reproducible TOST script for {endpoint}\n"
+        f"import pandas as pd\n"
+        f"from app.services.statistics_runner import run_tost\n\n"
+        f"df = pd.read_parquet('{src}')\n"
+        f"# ... pivot and run_tost(..., margin={margin})\n"
+    )
+    res["artefacts"] = {"script": str(script_path.relative_to(ws.root))}
+
+    res_path = ws.results / f"tost_{endpoint}.json"
+    res_hash = _write_json(res_path, res)
+    res["artefacts"]["result_json"] = str(res_path.relative_to(ws.root))
+    res["artefacts"]["result_sha256"] = res_hash
+
+    write_audit_event(
+        actor="tool:run_tost",
+        action="stats.tost",
+        study_id=study_id,
+        output_hash=res_hash,
+        metadata={"endpoint": endpoint, "margin": margin, "n": res["n"]},
+    )
+    return res
+
+
+
+# ===========================================================================
 # LangChain @tool wrappers
 # ---------------------------------------------------------------------------
 # We import `tool` lazily so this module can be used in tests without the
@@ -934,6 +1222,88 @@ def build_langchain_tools() -> list[Any]:
         )
 
     @tool
+    def run_mmrm_tool(
+        study_id: str,
+        rel_path: str,
+        endpoint: str,
+        subject_col: str = "subject_id",
+        time_col: str = "visit",
+        value_col: str = "value",
+        baseline: str = "D0",
+        primary_timepoint: str = "D28",
+        practical_threshold: float | None = None,
+        direction: str = "two_sided",
+    ) -> dict[str, Any]:
+        """Run MMRM (mixed model for repeated measures) on a continuous longitudinal endpoint."""
+        return _impl_run_mmrm(
+            study_id, rel_path, endpoint, subject_col, time_col, value_col,
+            baseline, primary_timepoint, practical_threshold, direction,  # type: ignore[arg-type]
+        )
+
+    @tool
+    def run_glmm_logit_tool(
+        study_id: str,
+        rel_path: str,
+        endpoint: str,
+        subject_col: str = "subject_id",
+        time_col: str = "visit",
+        value_col: str = "value",
+        baseline: str = "D0",
+        primary_timepoint: str = "D28",
+    ) -> dict[str, Any]:
+        """Run logistic GLMM (GEE) for a binary longitudinal endpoint."""
+        return _impl_run_glmm_logit(
+            study_id, rel_path, endpoint, subject_col, time_col, value_col,
+            baseline, primary_timepoint,
+        )
+
+    @tool
+    def run_mcnemar_tool(
+        study_id: str,
+        rel_path: str,
+        endpoint: str,
+        subject_col: str = "subject_id",
+        time_col: str = "visit",
+        value_col: str = "value",
+        baseline: str = "D0",
+        timepoint: str = "D28",
+    ) -> dict[str, Any]:
+        """Run McNemar's exact test for a paired binary endpoint (2 timepoints)."""
+        return _impl_run_mcnemar(
+            study_id, rel_path, endpoint, subject_col, time_col, value_col,
+            baseline, timepoint,
+        )
+
+    @tool
+    def run_top2box_tool(
+        study_id: str,
+        rel_path: str,
+        question_col: str,
+        value_col: str = "value",
+        scale_max: int = 5,
+    ) -> dict[str, Any]:
+        """Compute top-2-box % with Wilson CI for a consumer-perception question."""
+        return _impl_run_top2box(study_id, rel_path, question_col, value_col, scale_max)
+
+    @tool
+    def run_tost_tool(
+        study_id: str,
+        rel_path: str,
+        endpoint: str,
+        margin: float,
+        subject_col: str = "subject_id",
+        time_col: str = "visit",
+        value_col: str = "value",
+        baseline: str = "D0",
+        timepoint: str = "D28",
+    ) -> dict[str, Any]:
+        """Run TOST equivalence test on a paired endpoint with a pre-specified margin."""
+        return _impl_run_tost(
+            study_id, rel_path, endpoint, margin, subject_col, time_col, value_col,
+            baseline, timepoint,
+        )
+
+    @tool
     def record_package_versions_tool(study_id: str) -> dict[str, Any]:
         """Record Python + installed package versions for reproducibility."""
         return _impl_record_package_versions(study_id)
@@ -966,6 +1336,11 @@ def build_langchain_tools() -> list[Any]:
         choose_statistical_test_tool,
         apply_multiplicity_tool,
         run_paired_test_tool,
+        run_mmrm_tool,
+        run_glmm_logit_tool,
+        run_mcnemar_tool,
+        run_top2box_tool,
+        run_tost_tool,
         record_package_versions_tool,
         request_human_approval_tool,
         check_approval_status_tool,

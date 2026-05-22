@@ -93,6 +93,8 @@ ignore = ["E501"]  # handled by formatter
 "app/agents/subagents.py" = ["RUF001", "RUF002"]
 "app/agents/prompts.py" = ["RUF001", "RUF002"]
 "tests/test_tools.py" = ["N812"]
+"tests/test_new_tools.py" = ["N812", "RUF012"]
+"app/services/statistics_runner.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
