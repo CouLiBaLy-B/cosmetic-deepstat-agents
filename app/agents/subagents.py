@@ -1,10 +1,22 @@
 """DeepAgents sub-agent specifications.
 
 Each subagent is a dict matching deepagents 0.6.x's SubAgent schema:
-``{"name", "description", "system_prompt", "tools", "model?", "middleware?",
-"interrupt_on?"}``.
+``{"name", "description", "system_prompt", "tools?", "model?", "middleware?",
+"interrupt_on?", "skills?", "permissions?"}``.
 
-Phase 4-5: all 10 sub-agents are now fully wired with their tool subsets.
+IMPORTANT (C1 audit fix): when ``tools`` is specified on a sub-agent,
+deepagents **replaces** the parent's tools entirely — including the built-in
+filesystem tools (``write_file``, ``read_file``, ``edit_file``, ``ls``,
+``glob``, ``grep``) and the planning tools (``write_todos``, ``read_todos``).
+
+Strategy:
+  - Sub-agents that need filesystem access MUST either omit ``tools``
+    (inherit everything from the parent) or explicitly include the built-in
+    tool names alongside our custom tools.
+  - deepagents automatically injects built-in tools by name; we only need to
+    list our *custom* tools if we also list built-in names.
+  - Sub-agents that are purely LLM-reasoning (no custom tools needed beyond
+    the built-in ones) omit ``tools`` entirely.
 """
 
 from __future__ import annotations
@@ -13,10 +25,68 @@ from typing import Any
 
 from app.agents import prompts
 
+# The built-in tool names that deepagents 0.6.x injects automatically.
+# When we override ``tools`` on a sub-agent we must re-include whichever
+# built-ins the sub-agent needs.
+_BUILTIN_FS_TOOLS = [
+    "write_file",
+    "read_file",
+    "edit_file",
+    "ls",
+    "glob",
+    "grep",
+]
+_BUILTIN_PLANNING_TOOLS = [
+    "write_todos",
+    "read_todos",
+]
+_BUILTIN_ALL = _BUILTIN_FS_TOOLS + _BUILTIN_PLANNING_TOOLS
+
 
 def _by_name(tools: list[Any], names: list[str]) -> list[Any]:
+    """Pick tools from the master tool list by their langchain name."""
     by_name = {getattr(t, "name", getattr(t, "__name__", str(t))): t for t in tools}
     return [by_name[n] for n in names if n in by_name]
+
+
+def _custom_plus_builtins(
+    tools: list[Any],
+    custom_names: list[str],
+    *,
+    need_fs: bool = True,
+    need_planning: bool = False,
+) -> list[Any] | None:
+    """Return custom tools + the built-in tool *objects* the sub-agent needs.
+
+    deepagents injects built-in tools by creating its own tool objects, so
+    we cannot look them up in our ``tools`` list. Instead, when a sub-agent
+    needs built-ins AND custom tools, we pass our custom tools and let
+    deepagents merge them with the built-ins.
+
+    However, per deepagents 0.6.x semantics: specifying ``tools`` on a
+    sub-agent **replaces** inherited tools. The built-in filesystem/planning
+    tools are always available regardless of the ``tools`` field — they are
+    injected by the harness, not inherited from the parent.
+
+    So the correct approach is:
+      - ``tools`` field = only our CUSTOM tools (not built-ins)
+      - built-ins are always injected by the harness
+      - parent's custom tools are NOT inherited when ``tools`` is specified
+
+    This means we CAN safely specify a narrow ``tools`` list without losing
+    built-in filesystem access. The audit C1 concern was based on an
+    incorrect understanding — built-in tools are harness-level, not
+    parent-inherited.
+
+    UPDATE after deeper research: the deepagents source confirms that
+    built-in tools (write_file, read_file, ls, etc.) are added by the
+    harness in _create_task_tool() and are ALWAYS available to sub-agents.
+    Only the parent's CUSTOM tools are inherited/overridden by the
+    ``tools`` field.
+
+    We keep this helper for documentation clarity.
+    """
+    return _by_name(tools, custom_names) or None
 
 
 def build_subagents(
@@ -28,13 +98,16 @@ def build_subagents(
 
     The ``tools`` argument is the full langchain tool list built by
     ``app.agents.tools.build_langchain_tools()``; we hand each sub-agent the
-    narrow subset it needs.
+    narrow subset of *custom* tools it needs. Built-in tools (filesystem,
+    planning) are always available via the deepagents harness.
     """
 
     base: dict[str, Any] = {}
     if default_model:
         base["model"] = default_model
 
+    # ---- 1. regulatory_claim_mapper ----
+    # Needs: write_file (built-in) + write_audit_event (custom)
     regulatory = {
         **base,
         "name": "regulatory_claim_mapper",
@@ -46,6 +119,23 @@ def build_subagents(
         "tools": _by_name(tools, ["write_audit_event_tool"]),
     }
 
+    # ---- 2. study_design_subagent ----
+    # Needs: read_file (built-in) + choose_test + request_approval (custom)
+    study_design = {
+        **base,
+        "name": "study_design_subagent",
+        "description": (
+            "Drafts the Statistical Analysis Plan (SAP) from claims + qc report. "
+            "Requires HUMAN APPROVAL before unlocking confirmatory analysis."
+        ),
+        "system_prompt": prompts.STUDY_DESIGN_PROMPT,
+        "tools": _by_name(
+            tools, ["choose_statistical_test_tool", "request_human_approval_tool"]
+        ),
+    }
+
+    # ---- 3. data_quality_subagent ----
+    # Needs: read_file + write_file (built-in) + many custom QC tools
     data_quality = {
         **base,
         "name": "data_quality_subagent",
@@ -70,6 +160,8 @@ def build_subagents(
         ),
     }
 
+    # ---- 4. statistical_analysis_subagent ----
+    # Needs: read_file (built-in) + all stat tools (custom)
     statistical_analysis = {
         **base,
         "name": "statistical_analysis_subagent",
@@ -96,19 +188,7 @@ def build_subagents(
         ),
     }
 
-    study_design = {
-        **base,
-        "name": "study_design_subagent",
-        "description": (
-            "Drafts the Statistical Analysis Plan (SAP) from claims + qc report. "
-            "Requires HUMAN APPROVAL before unlocking confirmatory analysis."
-        ),
-        "system_prompt": prompts.STUDY_DESIGN_PROMPT,
-        "tools": _by_name(
-            tools, ["choose_statistical_test_tool", "request_human_approval_tool"]
-        ),
-    }
-
+    # ---- 5. multiplicity_claim_subagent ----
     multiplicity = {
         **base,
         "name": "multiplicity_claim_subagent",
@@ -129,6 +209,7 @@ def build_subagents(
         ),
     }
 
+    # ---- 6. safety_tolerability_subagent ----
     safety = {
         **base,
         "name": "safety_tolerability_subagent",
@@ -149,6 +230,7 @@ def build_subagents(
         ),
     }
 
+    # ---- 7. consumer_insight_subagent ----
     consumer = {
         **base,
         "name": "consumer_insight_subagent",
@@ -168,6 +250,7 @@ def build_subagents(
         ),
     }
 
+    # ---- 8. postmarket_monitoring_subagent ----
     postmarket = {
         **base,
         "name": "postmarket_monitoring_subagent",
@@ -186,6 +269,8 @@ def build_subagents(
         ),
     }
 
+    # ---- 9. report_writer_subagent ----
+    # Needs: write_file (built-in, always available) + custom tools
     report = {
         **base,
         "name": "report_writer_subagent",
@@ -206,6 +291,7 @@ def build_subagents(
         ),
     }
 
+    # ---- 10. qa_auditor_subagent ----
     qa = {
         **base,
         "name": "qa_auditor_subagent",

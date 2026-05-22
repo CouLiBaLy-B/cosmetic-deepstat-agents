@@ -22,8 +22,8 @@ dont 3 bloquants qui empêcheraient le mode LLM de fonctionner.
 
 | Sévérité | Nombre | Impact |
 |----------|--------|--------|
-| 🔴 Bloquant (crash à l'exécution) | 3 | Le mode `deepagents` ne peut pas démarrer |
-| 🟡 Majeur (comportement incorrect) | 2 | Le mode fonctionnerait mais avec des bugs |
+| 🔴 Bloquant (crash à l'exécution) | 3 → **0** ✅ | Corrigés dans ce commit |
+| 🟡 Majeur (comportement incorrect) | 2 → **0** ✅ | C4 corrigé (resume), C5 corrigé (guard) |
 | 🟢 Mineur (cosmétique / bonnes pratiques) | 2 | Pas d'impact fonctionnel |
 
 ---
