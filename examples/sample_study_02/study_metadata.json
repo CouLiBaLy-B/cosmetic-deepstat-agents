@@ -1,0 +1,21 @@
+{
+  "study_id": "STUDY_DEMO_002",
+  "product_id": "SERUM_HYDRA_001",
+  "title": "Hyaluronic acid serum — 24h hydration, before/after",
+  "design_type": "before_after",
+  "population": "women 25-45 with normal to dry skin",
+  "visits": ["D0", "D28"],
+  "jurisdiction": "EU",
+  "endpoints": [
+    {
+      "name": "corneometer_24h",
+      "data_type": "continuous",
+      "unit": "a.u.",
+      "timepoints": ["D0", "D28"],
+      "primary_or_secondary": "primary",
+      "practical_threshold": 4.0,
+      "multiplicity_family": "hydration",
+      "direction": "increase"
+    }
+  ]
+}
