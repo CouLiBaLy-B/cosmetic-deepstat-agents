@@ -1,0 +1,31 @@
+{
+  "study_id": "STUDY_DEMO_001",
+  "product_id": "CREAM_ANTIAGE_001",
+  "title": "Anti-aging cream — efficacy and tolerance, 28-day longitudinal",
+  "design_type": "before_after_longitudinal",
+  "population": "women 40-60 with dry skin",
+  "visits": ["D0", "D7", "D14", "D28"],
+  "jurisdiction": "EU",
+  "endpoints": [
+    {
+      "name": "corneometer_hydration",
+      "data_type": "continuous",
+      "unit": "a.u.",
+      "timepoints": ["D0", "D7", "D14", "D28"],
+      "primary_or_secondary": "primary",
+      "practical_threshold": 5.0,
+      "multiplicity_family": "hydration",
+      "direction": "increase"
+    },
+    {
+      "name": "wrinkle_depth",
+      "data_type": "continuous",
+      "unit": "mm",
+      "timepoints": ["D0", "D28"],
+      "primary_or_secondary": "primary",
+      "practical_threshold": -0.05,
+      "multiplicity_family": "anti_age",
+      "direction": "decrease"
+    }
+  ]
+}

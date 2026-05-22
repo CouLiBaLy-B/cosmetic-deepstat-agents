@@ -1,14 +1,15 @@
 """Endpoints to launch and inspect the agentic pipeline.
 
-In the MVP the launch is **synchronous** but stubbed: it returns an
-"accepted" envelope. The actual pipeline orchestration is implemented in
-``app/services/pipeline.py`` (next phase) and will be invoked from here.
+The launch is **synchronous** in the MVP (the pipeline finishes in a few
+seconds on the demo dataset). For production, swap to a background task /
+RQ worker — the pipeline function is already idempotent and re-entrant.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.agents.master_agent import build_master_agent
 from app.core.audit import write_audit_event
 from app.storage import db
 
@@ -22,14 +23,26 @@ def launch_analysis(study_id: str) -> dict[str, object]:
         raise HTTPException(404, f"Study {study_id!r} not found.")
 
     write_audit_event(actor="api", action="analysis.launch", study_id=study_id)
-    return {
-        "study_id": study_id,
-        "accepted": True,
-        "message": (
-            "Pipeline launch accepted. Wire app/services/pipeline.py to actually run the "
-            "DeepAgents orchestration. See docs/architecture.md §4 for the expected flow."
-        ),
-    }
+
+    agent = build_master_agent()
+    try:
+        summary = agent.invoke({"study_id": study_id})
+    except PermissionError as exc:
+        # SAP not yet approved — this is an expected, recoverable state.
+        return {
+            "study_id": study_id,
+            "status": "paused",
+            "reason": str(exc),
+            "pending_approvals": [
+                a.approval_id
+                for a in db.approvals().list()
+                if a.study_id == study_id and a.status.value == "pending"
+            ],
+        }
+    except Exception as exc:  # surface as 422 so the caller can retry
+        raise HTTPException(422, f"Pipeline failed: {exc}") from exc
+
+    return {"study_id": study_id, "status": "ok", "summary": summary}
 
 
 @router.get("/{study_id}/status")

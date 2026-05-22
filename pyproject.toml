@@ -85,6 +85,15 @@ extend-exclude = ["workspace", "notebooks", "migrations/versions"]
 select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
 ignore = ["E501"]  # handled by formatter
 
+[tool.ruff.lint.per-file-ignores]
+# Aliasing `tools as T` and using en-dashes / typographic punctuation
+# inside docstrings & f-strings is intentional in stats output.
+"app/agents/tools.py" = ["N812", "RUF001", "RUF002", "RUF003"]
+"app/services/pipeline.py" = ["N812", "RUF001", "RUF002", "RUF003"]
+"app/agents/subagents.py" = ["RUF001", "RUF002"]
+"app/agents/prompts.py" = ["RUF001", "RUF002"]
+"tests/test_tools.py" = ["N812"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

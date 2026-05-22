@@ -1,0 +1,20 @@
+[
+  {
+    "claim_id": "C001",
+    "text": "Réduit visiblement les rides en 28 jours",
+    "jurisdiction": "EU",
+    "claim_type": "instrumental"
+  },
+  {
+    "claim_id": "C002",
+    "text": "Hydrate pendant 24h",
+    "jurisdiction": "EU",
+    "claim_type": "instrumental"
+  },
+  {
+    "claim_id": "C003",
+    "text": "Bien toléré par les peaux sensibles",
+    "jurisdiction": "EU",
+    "claim_type": "safety"
+  }
+]

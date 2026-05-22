@@ -82,7 +82,8 @@ def test_create_study_and_upload_and_attach_claims(client: TestClient) -> None:
     assert len(r.json()) == 2
 
 
-def test_analysis_launch_and_status(client: TestClient) -> None:
+def test_analysis_launch_returns_422_when_no_data(client: TestClient) -> None:
+    """Without uploaded data the pipeline raises ValueError → API returns 422."""
     payload = {
         "study_id": "STUDY_E2E_002",
         "product_id": "CREAM_002",
@@ -93,8 +94,7 @@ def test_analysis_launch_and_status(client: TestClient) -> None:
     client.post("/api/studies", json=payload)
 
     r = client.post("/api/analyses/STUDY_E2E_002")
-    assert r.status_code == 202
-    assert r.json()["accepted"] is True
+    assert r.status_code == 422, r.text
 
     r = client.get("/api/analyses/STUDY_E2E_002/status")
     assert r.status_code == 200
