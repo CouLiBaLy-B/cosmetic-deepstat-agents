@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     llm_provider: LLMProvider = "mock"
     llm_model: str = "anthropic:claude-sonnet-4-5-20250929"
 
+    # ---- Agent topology ----------------------------------------------------
+    # "flat"   : master + 10 leaf sub-agents (master carries all tools).
+    # "nested" : master + 4 team-lead deep agents, each owning its own
+    #            specialists (token-optimised context isolation, default).
+    agent_topology: Literal["flat", "nested"] = "nested"
+
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     google_api_key: str | None = None

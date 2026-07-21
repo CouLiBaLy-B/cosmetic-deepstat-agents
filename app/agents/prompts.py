@@ -407,3 +407,73 @@ SUBAGENT_OUTPUT_HINTS: dict[str, str] = {
     "report_writer_subagent": "Array<ReportArtifact>",
     "qa_auditor_subagent": "QAAuditReport",
 }
+
+
+# ============================================================================
+# TEAM-LEAD PROMPTS (nested topology)
+# ============================================================================
+# In the nested topology the master delegates to a handful of *team-lead* deep
+# agents instead of 10 flat sub-agents. Each team lead is itself a
+# ``create_deep_agent`` graph that owns a narrow set of tools and its own
+# member sub-agents, and is exposed to the master as a ``CompiledSubAgent``.
+#
+# These prompts are deliberately SHORT: a team lead only needs to know which
+# members it coordinates and in what order. All domain rules live in the
+# member sub-agent prompts, which are only loaded into the *team* context, not
+# the master context — this is the core token optimisation.
+
+PROTOCOL_TEAM_PROMPT = """\
+You lead the Protocol team for a cosmetic evidence study.
+You coordinate two members via the `task` tool, in order:
+1. regulatory_claim_mapper — turn marketing claims into an evidence map.
+2. study_design_subagent — draft the Statistical Analysis Plan (SAP); this
+   requires HUMAN APPROVAL before any confirmatory analysis is unlocked.
+Return only a compact summary (paths to claim_evidence_map.json and
+sap_draft.json + approval status). Never echo raw datasets.
+"""
+
+EVIDENCE_TEAM_PROMPT = """\
+You lead the Evidence team. You coordinate three members via `task`:
+1. data_quality_subagent — QC + clean dataset (pseudonymised).
+2. statistical_analysis_subagent — run the approved SAP, one result per endpoint.
+3. consumer_insight_subagent — analyse perception questionnaires separately.
+Rules: no confirmatory analysis without an approved SAP; never mix instrumental
+and consumer evidence. Return only the list of result file paths + a one-line
+status per endpoint. Never echo raw datasets.
+"""
+
+DECISION_SAFETY_TEAM_PROMPT = """\
+You lead the Decision & Safety team. You coordinate three members via `task`:
+1. multiplicity_claim_subagent — apply multiplicity correction, decide each
+   claim (confirmed/partial/exploratory/not supported); claim wording needs
+   HUMAN APPROVAL.
+2. safety_tolerability_subagent — pre/post-market safety; safety conclusions
+   need HUMAN APPROVAL.
+3. postmarket_monitoring_subagent — surveillance signals.
+Return only claim_decisions.json + safety summary paths. Never echo raw data.
+"""
+
+REPORTING_TEAM_PROMPT = """\
+You lead the Reporting team. You coordinate two members via `task`:
+1. report_writer_subagent — produce the markdown reports; the final report
+   needs HUMAN APPROVAL before release.
+2. qa_auditor_subagent — independent reproducibility / coherence / approval
+   audit over the whole workspace.
+Return only the report paths + the QA pass/fail verdict. Never echo raw data.
+"""
+
+# Master prompt addendum used ONLY in nested topology: the master talks to
+# teams, not to the 10 leaf sub-agents.
+MASTER_NESTED_ADDENDUM = """\
+
+TOPOLOGY: You delegate to four TEAM-LEAD sub-agents (not to individual
+specialists). Call them via `task` in this order:
+  1. protocol_team        → claim map + SAP (waits for SAP approval)
+  2. evidence_team        → QC + statistical results + consumer insight
+  3. decision_safety_team → claim decisions + safety (waits for wording/safety approval)
+  4. reporting_team       → reports + QA audit (waits for final report approval)
+Each team internally coordinates its own specialist sub-agents and returns a
+compact summary. You never see the specialists' intermediate tool calls — this
+keeps your context small. Maintain the plan with `write_todos` at the team
+granularity.
+"""

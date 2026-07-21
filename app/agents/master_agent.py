@@ -234,6 +234,36 @@ def build_master_agent(settings: Settings | None = None) -> CompiledMasterAgent:
     # (write_file, read_file, etc.) persist to the real workspace.
     backend = FilesystemBackend(root_dir=str(settings.workspace_root_abs))
 
+    # ---- Topology selection (token optimisation) ----
+    # In "nested" mode the master delegates to 4 team-lead deep agents instead
+    # of 10 flat sub-agents, and carries NO custom tools of its own — each team
+    # owns its narrow tool slice. This shrinks the master's per-turn input
+    # context (see docs/nested_agents_token_optimization.md).
+    master_tools: list[Any] = tools
+    master_subagents: list[Any] = subagents
+    master_prompt = prompts.MASTER_SYSTEM_PROMPT
+    topology = settings.agent_topology
+    if topology == "nested":
+        try:
+            from app.agents.teams import build_nested_subagents
+
+            master_subagents = build_nested_subagents(
+                tools,
+                model=_resolve_model(settings),
+                backend=backend,
+                skills=[str(settings.skills_root_abs)],
+            )
+            master_tools = []  # teams own the tools; master only plans + delegates
+            master_prompt = (
+                prompts.MASTER_SYSTEM_PROMPT + prompts.MASTER_NESTED_ADDENDUM
+            )
+        except Exception as exc:
+            logger.warning(
+                "nested_topology_unavailable; falling back to flat",
+                error=str(exc),
+            )
+            topology = "flat"
+
     # HITL: interrupt when the agent calls request_human_approval_tool.
     # ``True`` is a shortcut for {"allowed_decisions": ["approve","edit","reject"]}.
     interrupt_on: dict[str, bool] = {
@@ -247,9 +277,9 @@ def build_master_agent(settings: Settings | None = None) -> CompiledMasterAgent:
 
     create_kwargs: dict[str, Any] = {
         "model": _resolve_model(settings),
-        "tools": tools,
-        "system_prompt": prompts.MASTER_SYSTEM_PROMPT,
-        "subagents": subagents,
+        "tools": master_tools,
+        "system_prompt": master_prompt,
+        "subagents": master_subagents,
         "backend": backend,  # C2 fix
         "skills": [str(settings.skills_root_abs)],
         "memory": memory_files or None,
@@ -263,15 +293,16 @@ def build_master_agent(settings: Settings | None = None) -> CompiledMasterAgent:
         "build_master_agent.real",
         provider=settings.llm_provider,
         model=create_kwargs["model"],
-        n_tools=len(tools),
-        n_subagents=len(subagents),
+        topology=topology,
+        n_master_tools=len(master_tools),
+        n_subagents=len(master_subagents),
         n_memory_files=len(memory_files),
     )
     return CompiledMasterAgent(
         mode="deepagents",
         graph=graph,
         tools=tools,
-        subagents=subagents,
+        subagents=master_subagents,
         settings=settings,
         _checkpointer=checkpointer,
     )
